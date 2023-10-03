@@ -80,8 +80,8 @@ async def api_scan(p, c, request: Request, external_id: str):
     lnurlpay_raw = str(request.url_for("boltcards.lnurlp_response", hit_id=hit.id))
     # bech32 encoded lnurl
     lnurlpay_bech32 = lnurl_encode(lnurlpay_raw)
-    # create a lud17 lnurlp to support lud19, add to payLink field of the withdrawRequest
-    lnurlpay_nonbech32_lud17 = lnurlpay_raw.replace("https://", "lnurlp://").replace("http://","lnurlp://")
+    # raw topup lnurl
+    lnurltopup_raw = str(request.url_for("boltcards.lnurlp_response", cadr_external_id=card.external_id))
 
     return {
         "tag": "withdrawRequest",
@@ -90,7 +90,7 @@ async def api_scan(p, c, request: Request, external_id: str):
         "minWithdrawable": 1 * 1000,
         "maxWithdrawable": card.tx_limit * 1000,
         "defaultDescription": f"Boltcard (refund address lnurl://{lnurlpay_bech32})",
-        "payLink": lnurlpay_nonbech32_lud17,  # LUD-19 compatibility
+        "payLink": lnurltopup_raw,  # LUD-19 compatibility
     }
 
 
@@ -224,6 +224,53 @@ async def lnurlp_callback(hit_id: str, amount: str = Query(None)):
             json.dumps([["text/plain", "Refund"]])
         ).encode(),
         extra={"refund": hit_id},
+    )
+
+    payResponse = {"pr": payment_request, "routes": []}
+
+    return json.dumps(payResponse)
+
+
+###############LNURLPAY PAYLINK#################
+
+@boltcards_ext.get(
+    "/api/v1/lnurlp/topup/{cadr_external_id}",
+    response_class=HTMLResponse,
+    name="boltcards.lnurlp_response",
+)
+async def lnurlp_response(req: Request, cadr_external_id: str):
+    card = await get_card_by_external_id(cadr_external_id)
+    assert card
+    if not card.enable:
+        return {"status": "ERROR", "reason": "Card is disabled."}
+    
+    payResponse = {
+        "tag": "payRequest",
+        "callback": req.url_for("boltcards.lnurlp_callback", cadr_external_id=cadr_external_id),
+        "metadata": LnurlPayMetadata(json.dumps([["text/plain", "Topup"]])),
+        "minSendable": 1 * 1000,
+        "maxSendable": 10000000 * 1000,
+    }
+    return json.dumps(payResponse)
+
+
+@boltcards_ext.get(
+    "/api/v1/lnurlp/topup/cb/{cadr_external_id}",
+    response_class=HTMLResponse,
+    name="boltcards.lnurlp_callback",
+)
+async def lnurlp_callback(cadr_external_id: str, amount: str = Query(None)):
+    card = await get_card_by_external_id(cadr_external_id)
+    assert card
+
+    _, payment_request = await create_invoice(
+        wallet_id=card.wallet,
+        amount=int(int(amount) / 1000),
+        memo=f"Topup {card.card_name}",
+        unhashed_description=LnurlPayMetadata(
+            json.dumps([["text/plain", "Topup"]])
+        ).encode(),
+        extra={"Topup": card.card_name},
     )
 
     payResponse = {"pr": payment_request, "routes": []}
