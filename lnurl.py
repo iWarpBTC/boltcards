@@ -238,7 +238,7 @@ async def lnurlp_callback(hit_id: str, amount: str = Query(None)):
     response_class=HTMLResponse,
     name="boltcards.lnurlp_response",
 )
-async def lnurlp_response(req: Request, cadr_external_id: str):
+async def lnurlp_topup_response(req: Request, cadr_external_id: str):
     card = await get_card_by_external_id(cadr_external_id)
     assert card
     if not card.enable:
@@ -246,7 +246,7 @@ async def lnurlp_response(req: Request, cadr_external_id: str):
     
     payResponse = {
         "tag": "payRequest",
-        "callback": req.url_for("boltcards.lnurlp_callback", cadr_external_id=cadr_external_id),
+        "callback": str(req.url_for("boltcards.lnurlp_callback", cadr_external_id=cadr_external_id)),
         "metadata": LnurlPayMetadata(json.dumps([["text/plain", "Topup"]])),
         "minSendable": 1 * 1000,
         "maxSendable": 10000000 * 1000,
@@ -259,7 +259,7 @@ async def lnurlp_response(req: Request, cadr_external_id: str):
     response_class=HTMLResponse,
     name="boltcards.lnurlp_callback",
 )
-async def lnurlp_callback(cadr_external_id: str, amount: str = Query(None)):
+async def lnurlp_topup_callback(cadr_external_id: str, amount: str = Query(None)):
     card = await get_card_by_external_id(cadr_external_id)
     assert card
 
